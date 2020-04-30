@@ -70,25 +70,36 @@ int Listen(int socket, int backlog) {
     return ret;
 }
 
+// inet ntop
+const char* InetNtop(int socket, const void *src, char *dst, socklen_t size) {
+    const char *ret;
+    if ((ret = inet_ntop(socket, src, dst, size)) == nullptr) 
+        E_FAIL("inet_ntop error");
+    return ret;
+}
+
 // 主机服务监听绑定
 static constexpr unsigned int LISTENQ = 100;
 static constexpr char *BIND_DEFAULT_HOST = "localhost";
-static constexpr char *BIND_DEFAULT_SERV = "12307";
-int BindAddress(const char *host, const char *serv, socklen_t *srv_len) {
+static constexpr char *BIND_DEFAULT_PORT = "12307";
+int BindAddress(const char *host, const char *port, char *srv_addr, size_t addr_len, char *srv_port, size_t port_len) {
     int listenfd, no;
     const int on = 1;
     struct addrinfo hints, *res, *ressave;
+    struct sockaddr_in *sa;
     memset(&hints, 0, sizeof(struct addrinfo));
-    if (host == nullptr && serv == nullptr) {
+    if (host == nullptr && port == nullptr) {
         host = BIND_DEFAULT_HOST;
-        serv = BIND_DEFAULT_SERV;
+        port = BIND_DEFAULT_PORT;
     }
 
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    if ((no = getaddrinfo(host, serv, &hints, &res)) != 0)
-        E_RETP("bind address error for %s, %s: %s\n", host, serv, gai_strerror(no));
+    if ((no = getaddrinfo(host, port, &hints, &res)) != 0)
+        E_RETP("bind address error for %s, %s: %s\n", host, port, gai_strerror(no));
+    else 
+        std::cout << "Serivice got addrinfo" << std::endl;
     
     ressave = res;
     do {
@@ -97,30 +108,34 @@ int BindAddress(const char *host, const char *serv, socklen_t *srv_len) {
         // enable reuse address
         Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (void *) &on, sizeof(on));
         // 返回结果的ai_addr和ai_addrlen可以用于bind
-        if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
+        if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0) {
+            std::cout << "Service bound" << std::endl;
+            // 反馈的信息
+            snprintf(srv_port, port_len, "%s", port);
+            sa = (struct sockaddr_in*) res->ai_addr;
+            InetNtop(AF_INET, &sa->sin_addr.s_addr, srv_addr, static_cast<socklen_t>(addr_len));
             break;      // success
+        }
         close(listenfd);
     } while ((res = res->ai_next) != nullptr);
     if (res == nullptr)
-        E_RETP("bind address error for %s, %s\n", host, serv);
+        E_RETP("bind address error for %s, %s\n", host, port);
+    
     // listen
     Listen(listenfd, LISTENQ);
-    // set return sizeof protocol
-    if (srv_len)
-        *srv_len = res->ai_addrlen;
 
     freeaddrinfo(ressave); // free addrinfo
     return listenfd;
 }
 
 // Start
-int Start(int argc, const char **argv, int *srv_port, socklen_t *srvlenp) {
+int Start(int argc, const char **argv, char *srv_addr, size_t addr_len, char *srv_port, size_t port_len) {
     int ret_sock;
 
     switch (argc) {
-        case 1: ret_sock = BindAddress(nullptr, nullptr, srvlenp); break;
-        case 2: ret_sock = BindAddress(nullptr, argv[1], srvlenp); break;
-        case 3: ret_sock = BindAddress(argv[1], argv[2], srvlenp); break;
+        case 1: ret_sock = BindAddress(nullptr, nullptr, srv_addr, addr_len, srv_port, port_len); break;
+        case 2: ret_sock = BindAddress(nullptr, argv[1], srv_addr, addr_len, srv_port, port_len); break;
+        case 3: ret_sock = BindAddress(argv[1], argv[2], srv_addr, addr_len, srv_port, port_len); break;
         default: E_RETP("%s\n", "usage: httpd [<Host>] <Service|Port>"); break;
     }
     
@@ -269,7 +284,7 @@ int SendFile(int fd, const char *file) {
     FILE *resource = nullptr;
     char buf[IOSIZE];
 
-    // StealALlMessage(fd);
+    StealALlMessage(fd);
     if ((resource = fopen(file, "r")) == nullptr) {
         Response404Notfound(fd);
     } else {
@@ -472,15 +487,18 @@ void AcceptRequest(void *arg) {
 
 int main(int argc, const char *argv[])
 {
-    int srv_sock, srv_port, cli_sock;
+    int srv_sock, cli_sock;
     socklen_t srv_len, cli_len;
     struct sockaddr_in cli_addr;
+    char srv_addr[16], srv_port[6];
+    std::string port = argv[2];
 
     pthread_t new_thread;
     pthread_attr_t thread_attr;
 
-    srv_sock = Start(argc, argv, &srv_port, &srv_len);
-    std::cout << "Service " << basename(argv[0]) << " running on " << srv_port << std::endl;
+    std::cout << "Service running..." << std::endl;
+    srv_sock = Start(argc, argv, srv_addr, sizeof(srv_addr), srv_port, sizeof(srv_port));
+    std::cout << "Service " << basename(argv[0]) << " running on " << srv_addr << " " << srv_port << std::endl;
 
     daemon(1, 1);
     pthread_attr_init(&thread_attr);

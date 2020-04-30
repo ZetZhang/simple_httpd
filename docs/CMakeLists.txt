@@ -5,5 +5,5 @@ target_link_libraries(color.cgi cgicc)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin/httpd/docs)
 
-# file(COPY index.html DESTINATION ${PROJECT_BINARY_DIR}/bin/httpd/docs)
-# message(STATUS "COPIED FILE")
+file(COPY index.html DESTINATION ${PROJECT_BINARY_DIR}/bin/httpd/docs)
+message(STATUS "COPIED FILE")
