@@ -371,20 +371,15 @@ int ExecuteCgi(int cli, const char *file, const char *method, const char *query_
         // child：重定向stdin、stdout到cgi_input、cgi_output的pipe_read和pipe_write
         // 并关闭cgi_input的pipe_write和cgi_output的pipe_read
         case 0:  
-            // CGI ENV：
-            // REQUEST_METHOD：server和CGI之间的传输方式
-            char method_env[255];
-            // QUERY_STRING：GET时的传输信息
-            char query_env[255];
-            // CONTENT_LENGTH：STDIO中有效信息长度
-            char length_env[255];
-            char buffer[255];
-
             dup2(cgi_input[0], STDIN_FILENO);
             dup2(cgi_output[1], STDOUT_FILENO);
             close(cgi_input[1]);
             close(cgi_output[0]);
 
+            // CGI ENV：
+            // REQUEST_METHOD：server和CGI之间的传输方式
+            // QUERY_STRING：GET时的传输信息
+            // CONTENT_LENGTH：STDIO中有效信息长度
             Putenv(cli, "REQUEST_METHOD", method);
             if (!strcasecmp(method, "GET")) // GET
                 Putenv(cli, "QUERY_STRING", query_string);
